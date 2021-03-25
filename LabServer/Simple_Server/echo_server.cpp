@@ -87,21 +87,26 @@ void MovingPlayer(SESSION* client)
 	{
 		if (client->S_data.y > 0)
 			client->S_data.y--;
+		client->C_data.ARROW_UP = false;
 	}
 	else if (client->C_data.ARROW_DOWN)
 	{
 		if (client->S_data.y < 7)
 			client->S_data.y++;
+		client->C_data.ARROW_DOWN = false;
 	}
-	else if (client->C_data.ARROW_LEFT)
+	
+	if (client->C_data.ARROW_LEFT)
 	{
 		if (client->S_data.x > 0)
 			client->S_data.x--;
+		client->C_data.ARROW_LEFT = false;
 	}
 	else if (client->C_data.ARROW_RIGHT)
 	{
 		if (client->S_data.x < 7)
 			client->S_data.x++;
+		client->C_data.ARROW_RIGHT = false;
 	}
 }
 

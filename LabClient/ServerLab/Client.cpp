@@ -128,7 +128,10 @@ void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DW
 
 void CALLBACK send_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags)
 {
-	cout << " µé¾î¿Ô" << endl;
+	C_data.ARROW_DOWN = false;
+	C_data.ARROW_UP = false;
+	C_data.ARROW_RIGHT = false;
+	C_data.ARROW_LEFT = false;
 	WSABUF r_wsabuf[1];
 	r_wsabuf[0].buf = (char*)&S_data;
 	r_wsabuf[0].len = sizeof(Pos);
