@@ -40,6 +40,7 @@ typedef struct Pos
 {
 	int x = 3;
 	int y = 3;
+	int id = -1;
 	short isplayer = 0;
 }Pos;
 KeyInputs C_data; // 서버로 보낼 데이터
@@ -57,8 +58,6 @@ void CreateClient(HWND hWnd);
 void display_error(const char* msg, int err_no);
 //아이피 입력
 BOOL CALLBACK DialogProc(HWND hDlg, UINT iMsg, WPARAM wParam, LPARAM lParam);
-//Recv Send 함수
-void RecvSendData();
 //Recv, Send 스레드 함수
 DWORD WINAPI RecvSendMsg(LPVOID arg);
 void do_send_message();
@@ -122,7 +121,10 @@ void do_send_message()
 
 void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags)
 {
-	cout << "Server Sent: " << S_data.x << S_data.y << endl;
+	cout << "Server Sent["<< S_data .id << ": " << S_data.x << S_data.y << endl;
+	Players[S_data.id].x = S_data.x;
+	Players[S_data.id].y = S_data.y;
+	Players[S_data.id].isplayer = S_data.isplayer;
 	do_send_message();
 }
 
@@ -138,26 +140,6 @@ void CALLBACK send_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DW
 	DWORD r_flag = 0;
 	memset(over, 0, sizeof(*over));
 	WSARecv(s_socket, r_wsabuf, 1, 0, &r_flag, over, recv_callback);
-}
-
-void RecvSendData()
-{
-	WSABUF s_wsabuf[1];
-	s_wsabuf[0].buf = (char*)&C_data;
-	s_wsabuf[0].len = sizeof(KeyInputs);
-	DWORD sent_bytes;
-	WSASend(s_socket, s_wsabuf, 1, &sent_bytes, 0, 0, 0);
-
-	WSABUF r_wsabuf[1];
-	r_wsabuf[0].buf = (char*)&S_data;
-	r_wsabuf[0].len = sizeof(Pos);
-	DWORD bytes_recv;
-	DWORD r_flag = 0;
-	int ret = WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
-	if (SOCKET_ERROR == ret) {
-		display_error("recv from server ", WSAGetLastError());
-		exit(-1);
-	}
 }
 
 DWORD WINAPI RecvSendMsg(LPVOID arg) 
@@ -252,17 +234,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 		{
 			Rectangle(memDC, 0, 0, rectView.right,rectView.bottom);
 			background.Draw(memDC, 0, 0, rectView.right, rectView.bottom);
-			chess.Draw(memDC, cx * dx, cy * dy, dx, dy);
+			//chess.Draw(memDC, cx * dx, cy * dy, dx, dy);
 
 			for (int i = 0; i < MAX_PLAYER; i++)
 			{
 				if (Players[i].isplayer == 1)
 				{
-
+					chess.Draw(memDC, Players[i].x * dx, Players[i].y * dy, dx, dy);
 				}
 				else if (Players[i].isplayer == 2)
 				{
-
+					chess.Draw(memDC, Players[i].x * dx, Players[i].y * dy, dx, dy);
 				}
 			}
 

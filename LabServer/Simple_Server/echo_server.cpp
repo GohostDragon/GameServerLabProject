@@ -21,6 +21,8 @@ typedef struct Pos
 {
 	int x = 3;
 	int y = 3;
+	int id = -1;
+	short isplayer = 0;
 };
 
 struct SESSION
@@ -58,7 +60,7 @@ void CALLBACK send_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DW
 	DWORD r_flag = 0;
 	memset(&(clients[client_s].overlapped), 0, sizeof(WSAOVERLAPPED));
 	cout << "Client Sent[" << client_s << "] : " << clients[client_s].C_data.ARROW_DOWN << clients[client_s].C_data.ARROW_UP << clients[client_s].C_data.ARROW_LEFT << clients[client_s].C_data.ARROW_RIGHT << endl;;
-	WSARecv(client_s, &clients[client_s].dataBuffer, 1, 0, &r_flag, over, recv_callback);
+	WSARecv(client_s, &clients[client_s].dataBuffer, 1, 0, &r_flag, &(clients[client_s].overlapped), recv_callback);
 }
 
 void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags)
@@ -74,11 +76,26 @@ void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DW
 		cout << " 접속 종료" << endl;
 		return;
 	}
-	clients[client_s].dataBuffer.buf = (char*)&clients[client_s].S_data;
-	clients[client_s].dataBuffer.len = sizeof(Pos);
-	memset(&(clients[client_s].overlapped), 0, sizeof(WSAOVERLAPPED));
-	cout << "Server Send[" << client_s << "] : x: " << clients[client_s].S_data.x << "y: " << clients[client_s].S_data.y << endl;;
-	WSASend(client_s, &(clients[client_s].dataBuffer), 1, NULL, 0, over, send_callback);
+	for (auto iter = clients.begin(); iter != clients.end(); iter++)
+	{
+		SOCKET sClient = iter->second.socket;
+		if (sClient != client_s)
+		{
+			clients[client_s].S_data.isplayer = 1;
+			clients[sClient].dataBuffer.buf = (char*)&clients[client_s].S_data;
+			clients[sClient].dataBuffer.len = sizeof(Pos);
+			ZeroMemory(&(clients[sClient].overlapped), sizeof(WSAOVERLAPPED));
+			WSASend(sClient, &(clients[sClient].dataBuffer), 1, NULL, 0, &(clients[sClient].overlapped), NULL);
+		}
+		else
+		{
+			clients[sClient].S_data.isplayer = 2;
+			clients[sClient].dataBuffer.buf = (char*)&clients[client_s].S_data;
+			clients[sClient].dataBuffer.len = sizeof(Pos);
+			ZeroMemory(&(clients[sClient].overlapped), sizeof(WSAOVERLAPPED));
+			WSASend(sClient, &(clients[sClient].dataBuffer), 1, NULL, 0, &(clients[client_s].overlapped), send_callback);
+		}
+	}
 }
 
 void MovingPlayer(SESSION* client)
@@ -127,16 +144,24 @@ int main()
 	SOCKADDR_IN cl_addr;
 	int addr_len = sizeof(SOCKADDR_IN);
 	memset(&cl_addr, 0, addr_len);
+
+	int playerid = 0;
+
 	while (true) {
 		SOCKET clientSocket = accept(s_socket, (struct sockaddr*)&svr_addr, &addr_len);
 		clients[clientSocket] = SESSION{};
 		clients[clientSocket].socket = clientSocket;
+		clients[clientSocket].S_data.id = playerid;
+		clients[clientSocket].S_data.isplayer = 2;
 		clients[clientSocket].dataBuffer.buf = (char*)&clients[clientSocket].C_data;
 		clients[clientSocket].dataBuffer.len = sizeof(KeyInputs);
 		memset(&clients[clientSocket].overlapped, 0, sizeof(WSAOVERLAPPED));
 		DWORD r_flag = 0;
-		WSARecv(clients[clientSocket].socket, &clients[clientSocket].dataBuffer, 1, 0, &r_flag, &(clients[clientSocket].overlapped), recv_callback);
+		
+		WSASend(clients[clientSocket].socket, &(clients[clientSocket].dataBuffer), 1, NULL, 0, &(clients[clientSocket].overlapped), send_callback);
+		//WSARecv(clients[clientSocket].socket, &clients[clientSocket].dataBuffer, 1, 0, &r_flag, &(clients[clientSocket].overlapped), recv_callback);
 		cout << "New Client [" << clientSocket << "] connected" << endl;
+		playerid++;
 	}
 	closesocket(s_socket);
 	WSACleanup();
