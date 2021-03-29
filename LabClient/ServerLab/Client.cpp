@@ -12,7 +12,7 @@
 using namespace std;
 //서버 관련
 #pragma comment(lib, "WS2_32.LIB")
-#pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console" ) 
+//#pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console" ) 
 
 // 보드맵 사이즈
 #define BOARD_SIZEX 8
@@ -58,11 +58,10 @@ void CreateClient(HWND hWnd);
 void display_error(const char* msg, int err_no);
 //아이피 입력
 BOOL CALLBACK DialogProc(HWND hDlg, UINT iMsg, WPARAM wParam, LPARAM lParam);
+//Recv Send 함수
+void RecvSendData();
 //Recv, Send 스레드 함수
 DWORD WINAPI RecvSendMsg(LPVOID arg);
-void do_send_message();
-void CALLBACK send_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags);
-void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags);
 
 BOOL CALLBACK DialogProc(HWND hDlg, UINT iMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -107,46 +106,41 @@ void CreateClient(HWND hWnd)
 	DialogBox(g_hinst, MAKEINTRESOURCE(IDD_DIALOG1), hWnd, (DLGPROC)&DialogProc);
 	inet_pton(AF_INET, serverip, &svr_addr.sin_addr);
 	WSAConnect(s_socket, reinterpret_cast<sockaddr*>(&svr_addr), sizeof(svr_addr), NULL, NULL, NULL, NULL);
-	do_send_message();
+
+	WSABUF r_wsabuf[1];
+	r_wsabuf[0].buf = (char*)&S_data;
+	r_wsabuf[0].len = sizeof(Pos);
+	DWORD bytes_recv;
+	DWORD r_flag = 0;
+	WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
+	Players[S_data.id] = S_data;
+	cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
+	InvalidateRect(hWnd, NULL, FALSE);
 }
 
-void do_send_message()
+void RecvSendData()
 {
 	WSABUF s_wsabuf[1];
 	s_wsabuf[0].buf = (char*)&C_data;
 	s_wsabuf[0].len = sizeof(KeyInputs);
-	memset(&s_over, 0, sizeof(s_over));
-	WSASend(s_socket, s_wsabuf, 1, 0, 0, &s_over, send_callback);
-}
-
-void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags)
-{
-	cout << "Server Sent["<< S_data .id << ": " << S_data.x << S_data.y << endl;
-	Players[S_data.id].x = S_data.x;
-	Players[S_data.id].y = S_data.y;
-	Players[S_data.id].isplayer = S_data.isplayer;
-	do_send_message();
-}
-
-void CALLBACK send_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags)
-{
-	C_data.ARROW_DOWN = false;
-	C_data.ARROW_UP = false;
-	C_data.ARROW_RIGHT = false;
-	C_data.ARROW_LEFT = false;
-	WSABUF r_wsabuf[1];
-	r_wsabuf[0].buf = (char*)&S_data;
-	r_wsabuf[0].len = sizeof(Pos);
-	DWORD r_flag = 0;
-	memset(over, 0, sizeof(*over));
-	WSARecv(s_socket, r_wsabuf, 1, 0, &r_flag, over, recv_callback);
+	DWORD sent_bytes;
+	WSASend(s_socket, s_wsabuf, 1, &sent_bytes, 0, 0, 0);
 }
 
 DWORD WINAPI RecvSendMsg(LPVOID arg) 
 {
+	HWND hWnd = (HWND)arg;
 	while (1) 
 	{
-		//RecvSendData()
+		WSABUF r_wsabuf[1];
+		r_wsabuf[0].buf = (char*)&S_data;
+		r_wsabuf[0].len = sizeof(Pos);
+		DWORD bytes_recv;
+		DWORD r_flag = 0;
+		WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
+		Players[S_data.id] = S_data;
+		cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
+		InvalidateRect(hWnd, NULL, FALSE);
 	}
 	return 0;
 }
@@ -182,12 +176,11 @@ int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR IpszCmdPa
 	UpdateWindow(hWnd);
 	//클라이언트 소켓
 	CreateClient(hWnd);
-	//CreateThread(NULL, 0, RecvSendMsg, NULL, 0, NULL);
+	CreateThread(NULL, 0, RecvSendMsg, (LPVOID)hWnd, 0, NULL);
 	//이벤트 루프 처리
 	while (GetMessage(&Message, 0, 0, 0)) {
 		TranslateMessage(&Message);
 		DispatchMessage(&Message);
-		SleepEx(100, true);
 	}
 
 	closesocket(s_socket);
@@ -201,6 +194,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 	PAINTSTRUCT ps;
 	static CImage background; //보드맵
 	static CImage chess; //플레이어
+	static CImage chess2; //플레이어
 
 	static RECT rectView; //클라이언트 창 크기
 	static HDC hDC,memDC;
@@ -219,6 +213,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 
 		background.Load("img\\chessboard.jpg");
 		chess.Load("img\\pngegg.png");
+		chess2.Load("img\\pngegg2.png");
 		return 0;
 	}
 	case WM_PAINT:
@@ -240,7 +235,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 			{
 				if (Players[i].isplayer == 1)
 				{
-					chess.Draw(memDC, Players[i].x * dx, Players[i].y * dy, dx, dy);
+					chess2.Draw(memDC, Players[i].x * dx, Players[i].y * dy, dx, dy);
 				}
 				else if (Players[i].isplayer == 2)
 				{
@@ -270,7 +265,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 			C_data.ARROW_DOWN = true;
 			break;
 		}
-		//RecvSendData();
+		RecvSendData();
 		InvalidateRect(hWnd, NULL, FALSE);
 		break;
 	case WM_KEYUP:
@@ -288,7 +283,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 			C_data.ARROW_DOWN = false;
 			break;
 		}
-		//RecvSendData();
+		RecvSendData();
 		InvalidateRect(hWnd, NULL, FALSE);
 		break;
 	case WM_CHAR:
