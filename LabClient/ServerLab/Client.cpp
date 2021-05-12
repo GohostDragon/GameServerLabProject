@@ -9,10 +9,14 @@
 
 #include "resource.h"
 
+#include "..\..\Protocol\protocol.h"
+
 using namespace std;
 //서버 관련
 #pragma comment(lib, "WS2_32.LIB")
 //#pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console" ) 
+
+constexpr auto BUF_SIZE = MAX_BUFFER;
 
 // 보드맵 사이즈
 #define BOARD_SIZEX 8
@@ -23,7 +27,6 @@ using namespace std;
 WSADATA WSAData;
 SOCKET s_socket; // 서버 소켓
 char serverip[32]; //서버아이피
-constexpr short SERVER_PORT = 3500; // 서버 포트
 WSAOVERLAPPED s_over;
 
 //서버로 보낼 데이터
@@ -40,12 +43,14 @@ typedef struct Pos
 {
 	int x = 3;
 	int y = 3;
-	int id = -1;
-	short isplayer = 0;
+	bool bEnable = false;
 }Pos;
 KeyInputs C_data; // 서버로 보낼 데이터
 Pos S_data; // 서버에서 받을 데이터
-Pos Players[MAX_PLAYER];
+Pos Players[MAX_USER];
+
+Pos myPlayer;
+int myid;
 
 // 윈도우 프로그래밍 관련
 HINSTANCE g_hinst;
@@ -58,10 +63,15 @@ void CreateClient(HWND hWnd);
 void display_error(const char* msg, int err_no);
 //아이피 입력
 BOOL CALLBACK DialogProc(HWND hDlg, UINT iMsg, WPARAM wParam, LPARAM lParam);
-//Recv Send 함수
-void RecvSendData();
-//Recv, Send 스레드 함수
+//Send 함수
+void SendData();
+//Recv 스레드 함수
 DWORD WINAPI RecvSendMsg(LPVOID arg);
+
+void send_login_packet();
+void send_move_packet(int dir);
+void process_data(char* net_buf, size_t io_byte);
+void ProcessPacket(char* ptr);
 
 BOOL CALLBACK DialogProc(HWND hDlg, UINT iMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -107,18 +117,19 @@ void CreateClient(HWND hWnd)
 	inet_pton(AF_INET, serverip, &svr_addr.sin_addr);
 	WSAConnect(s_socket, reinterpret_cast<sockaddr*>(&svr_addr), sizeof(svr_addr), NULL, NULL, NULL, NULL);
 
-	WSABUF r_wsabuf[1];
-	r_wsabuf[0].buf = (char*)&S_data;
-	r_wsabuf[0].len = sizeof(Pos);
-	DWORD bytes_recv;
-	DWORD r_flag = 0;
-	WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
-	Players[S_data.id] = S_data;
-	cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
+	send_login_packet();
+	//WSABUF r_wsabuf[1];
+	//r_wsabuf[0].buf = (char*)&S_data;
+	//r_wsabuf[0].len = sizeof(Pos);
+	//DWORD bytes_recv;
+	//DWORD r_flag = 0;
+	//WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
+	//Players[S_data.id] = S_data;
+	//cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
 	InvalidateRect(hWnd, NULL, FALSE);
 }
 
-void RecvSendData()
+void SendData()
 {
 	WSABUF s_wsabuf[1];
 	s_wsabuf[0].buf = (char*)&C_data;
@@ -132,14 +143,19 @@ DWORD WINAPI RecvSendMsg(LPVOID arg)
 	HWND hWnd = (HWND)arg;
 	while (1) 
 	{
+		char net_buf[BUF_SIZE];
+
 		WSABUF r_wsabuf[1];
-		r_wsabuf[0].buf = (char*)&S_data;
-		r_wsabuf[0].len = sizeof(Pos);
+		r_wsabuf[0].buf = (char*)&net_buf;
+		r_wsabuf[0].len = BUF_SIZE;
 		DWORD bytes_recv;
 		DWORD r_flag = 0;
-		WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
-		Players[S_data.id] = S_data;
-		cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
+		auto recv_result = WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
+		//Players[S_data.id] = S_data;
+		//cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
+
+		if (bytes_recv > 0) process_data(net_buf, bytes_recv);
+
 		InvalidateRect(hWnd, NULL, FALSE);
 	}
 	return 0;
@@ -176,7 +192,7 @@ int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR IpszCmdPa
 	UpdateWindow(hWnd);
 	//클라이언트 소켓
 	CreateClient(hWnd);
-	CreateThread(NULL, 0, RecvSendMsg, (LPVOID)hWnd, 0, NULL);
+	CreateThread(NULL, 0, RecvSendMsg, (LPVOID)hWnd, 0, NULL); // Recv는 쓰레드를 돌려서 게속 받게 함
 	//이벤트 루프 처리
 	while (GetMessage(&Message, 0, 0, 0)) {
 		TranslateMessage(&Message);
@@ -231,16 +247,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 			background.Draw(memDC, 0, 0, rectView.right, rectView.bottom);
 			//chess.Draw(memDC, cx * dx, cy * dy, dx, dy);
 
-			for (int i = 0; i < MAX_PLAYER; i++)
+			for (int i = 0; i < MAX_USER; i++)
 			{
-				if (Players[i].isplayer == 1)
+				if (Players[i].bEnable)
 				{
 					chess2.Draw(memDC, Players[i].x * dx, Players[i].y * dy, dx, dy);
 				}
-				else if (Players[i].isplayer == 2)
-				{
-					chess.Draw(memDC, Players[i].x * dx, Players[i].y * dy, dx, dy);
-				}
+			}
+
+			if (myPlayer.bEnable) {
+				chess.Draw(memDC, myPlayer.x * dx, myPlayer.y * dy, dx, dy);
 			}
 
 
@@ -251,21 +267,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 		break;
 	}
 	case WM_KEYDOWN:
+		int dir;
 		switch (wParam) {
 		case VK_LEFT:
 			C_data.ARROW_LEFT = true;
+			dir = 3;
 			break;
 		case VK_RIGHT:
 			C_data.ARROW_RIGHT = true;
+			dir = 1;
 			break;
 		case VK_UP:
 			C_data.ARROW_UP = true;
+			dir = 0;
 			break;
 		case VK_DOWN:
 			C_data.ARROW_DOWN = true;
+			dir = 2;
 			break;
 		}
-		RecvSendData();
+		send_move_packet(dir);
 		InvalidateRect(hWnd, NULL, FALSE);
 		break;
 	case WM_KEYUP:
@@ -283,7 +304,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 			C_data.ARROW_DOWN = false;
 			break;
 		}
-		RecvSendData();
 		InvalidateRect(hWnd, NULL, FALSE);
 		break;
 	case WM_CHAR:
@@ -325,4 +345,129 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 		return 0;
 	}
 	return(DefWindowProcA(hWnd, iMessage, wParam, IParam));//위의 세 메세지 외의 나머지 메세지는 OS로
+}
+
+
+void ProcessPacket(char* ptr)
+{
+	static bool first_time = true;
+	switch (ptr[1])
+	{
+	case S2C_PACKET_LOGIN_INFO:
+	{
+		s2c_packet_login_info* packet = reinterpret_cast<s2c_packet_login_info*>(ptr);
+		myid = packet->id;
+		myPlayer.x = packet->x;
+		myPlayer.y = packet->y;
+		myPlayer.bEnable = true;
+	}
+	break;
+	case S2C_PACKET_PC_LOGIN:
+	{
+		s2c_packet_pc_login* my_packet = reinterpret_cast<s2c_packet_pc_login*>(ptr);
+		int id = my_packet->id;
+
+		if (id < MAX_USER) {
+			Players[id].x = my_packet->x;
+			Players[id].y = my_packet->y;
+			Players[id].bEnable = true;
+		}
+		else {
+			//npc[id - NPC_START].x = my_packet->x;
+			//npc[id - NPC_START].y = my_packet->y;
+			//npc[id - NPC_START].attr |= BOB_ATTR_VISIBLE;
+		}
+		break;
+	}
+	case S2C_PACKET_PC_MOVE:
+	{
+		s2c_packet_pc_move* my_packet = reinterpret_cast<s2c_packet_pc_move*>(ptr);
+		int other_id = my_packet->id;
+		if (other_id == myid) {
+			myPlayer.x = my_packet->x;
+			myPlayer.y = my_packet->y;
+		}
+		else if (other_id < MAX_USER) {
+			Players[other_id].x = my_packet->x;
+			Players[other_id].y = my_packet->y;
+		}
+		else {
+			//npc[other_id - NPC_START].x = my_packet->x;
+			//npc[other_id - NPC_START].y = my_packet->y;
+		}
+		break;
+	}
+
+	case S2C_PACKET_PC_LOGOUT:
+	{
+		s2c_packet_pc_logout* my_packet = reinterpret_cast<s2c_packet_pc_logout*>(ptr);
+		int other_id = my_packet->id;
+		if (other_id == myid) {
+			myPlayer.bEnable = false;
+		}
+		else if (other_id < MAX_USER) {
+			Players[other_id].bEnable = false;
+		}
+		else {
+			//		npc[other_id - NPC_START].attr &= ~BOB_ATTR_VISIBLE;
+		}
+		break;
+	}
+	default:
+		printf("Unknown PACKET type [%d]\n", ptr[1]);
+	}
+}
+
+void process_data(char* net_buf, size_t io_byte)
+{
+	char* ptr = net_buf;
+	static size_t in_packet_size = 0;
+	static size_t saved_packet_size = 0;
+	static char packet_buffer[BUF_SIZE];
+
+	while (0 != io_byte) {
+		if (0 == in_packet_size) in_packet_size = ptr[0];
+		if (io_byte + saved_packet_size >= in_packet_size) {
+			memcpy(packet_buffer + saved_packet_size, ptr, in_packet_size - saved_packet_size);
+			ProcessPacket(packet_buffer);
+			ptr += in_packet_size - saved_packet_size;
+			io_byte -= in_packet_size - saved_packet_size;
+			in_packet_size = 0;
+			saved_packet_size = 0;
+		}
+		else {
+			memcpy(packet_buffer + saved_packet_size, ptr, io_byte);
+			saved_packet_size += io_byte;
+			io_byte = 0;
+		}
+	}
+}
+
+void send_move_packet(int dir)
+{
+	c2s_packet_move packet;
+	packet.size = sizeof(packet);
+	packet.type = C2S_PACKET_MOVE;
+	packet.dir = dir;
+
+	WSABUF s_wsabuf[1];
+	s_wsabuf[0].buf = (char*)&packet;
+	s_wsabuf[0].len = sizeof(packet);
+	DWORD sent_bytes;
+	WSASend(s_socket, s_wsabuf, 1, &sent_bytes, 0, 0, 0);
+}
+
+void send_login_packet()
+{
+	c2s_packet_login packet;
+	packet.size = sizeof(packet);
+	packet.type = C2S_PACKET_LOGIN;
+	//strcpy_s(packet.name, to_string(rand() % 100).c_str());
+	strcpy_s(packet.name, "nickname");
+
+	WSABUF s_wsabuf[1];
+	s_wsabuf[0].buf = (char*)&packet;
+	s_wsabuf[0].len = sizeof(packet);
+	DWORD sent_bytes;
+	WSASend(s_socket, s_wsabuf, 1, &sent_bytes, 0, 0, 0);
 }

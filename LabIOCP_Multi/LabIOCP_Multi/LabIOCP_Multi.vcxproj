@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{31fcf5ef-c04e-45f7-a39e-a34401a84727}</ProjectGuid>
-    <RootNamespace>SimpleServer</RootNamespace>
+    <ProjectGuid>{7a50c15c-6727-4b57-ac78-225e7547fae8}</ProjectGuid>
+    <RootNamespace>LabIOCPMulti</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -139,7 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="echo_server.cpp" />
+    <ClCompile Include="iocp_multi_server.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Protocol\protocol.h" />
