@@ -112,6 +112,10 @@ void player_move(int p_id, char dir)
 	case 2: if (y < (BOARD_HEIGHT - 1)) y++; break;
 	case 3: if (x > 0) x--; break;
 	}
+
+	if (players[p_id].m_x == x && players[p_id].m_y == y)
+		return;
+
 	players[p_id].m_x = x;
 	players[p_id].m_y = y;
 
