@@ -19,8 +19,10 @@ using namespace std;
 constexpr auto BUF_SIZE = MAX_BUFFER;
 
 // 보드맵 사이즈
-#define BOARD_SIZEX 8
-#define BOARD_SIZEY 8 
+#define BOARD_SHOW_SIZEX 16
+#define BOARD_SHOW_SIZEY 16
+#define BOARD_SIZEX 16
+#define BOARD_SIZEY 16
 
 // Server 관련
 #define MAX_PLAYER 11
@@ -118,14 +120,6 @@ void CreateClient(HWND hWnd)
 	WSAConnect(s_socket, reinterpret_cast<sockaddr*>(&svr_addr), sizeof(svr_addr), NULL, NULL, NULL, NULL);
 
 	send_login_packet();
-	//WSABUF r_wsabuf[1];
-	//r_wsabuf[0].buf = (char*)&S_data;
-	//r_wsabuf[0].len = sizeof(Pos);
-	//DWORD bytes_recv;
-	//DWORD r_flag = 0;
-	//WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
-	//Players[S_data.id] = S_data;
-	//cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
 	InvalidateRect(hWnd, NULL, FALSE);
 }
 
@@ -238,25 +232,40 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 		img.Create(rectView.right, rectView.bottom, 24);
 		hDC = BeginPaint(hWnd, &ps);
 
+		myPlayer.bEnable = true;
+
 		cx = S_data.x;
 		cy = S_data.y;
-
 		memDC = img.GetDC();
 		{
 			Rectangle(memDC, 0, 0, rectView.right,rectView.bottom);
-			background.Draw(memDC, 0, 0, rectView.right, rectView.bottom);
+			//background.Draw(memDC, 0, 0, rectView.right, rectView.bottom);
+			for (int y = 0; y < 50; y++)
+			{
+				for (int x = 0; x < 50; x++)
+				{
+					background.Draw(memDC
+						, rectView.right / 2 * x - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
+						, rectView.bottom / 2 * y - myPlayer.y * dy + BOARD_SIZEY / 2 * dy
+						, rectView.right / 2
+						, rectView.bottom / 2);
+				}
+			}
 			//chess.Draw(memDC, cx * dx, cy * dy, dx, dy);
 
 			for (int i = 0; i < MAX_USER; i++)
 			{
 				if (Players[i].bEnable)
 				{
-					chess2.Draw(memDC, Players[i].x * dx, Players[i].y * dy, dx, dy);
+					chess2.Draw(memDC
+						, Players[i].x * dx - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
+						, Players[i].y * dy - myPlayer.y * dy + BOARD_SIZEX / 2 * dy
+						, dx, dy);
 				}
 			}
 
 			if (myPlayer.bEnable) {
-				chess.Draw(memDC, myPlayer.x * dx, myPlayer.y * dy, dx, dy);
+				chess.Draw(memDC, BOARD_SIZEX / 2 * dx, BOARD_SIZEY / 2 * dy, dx, dy);
 			}
 
 
