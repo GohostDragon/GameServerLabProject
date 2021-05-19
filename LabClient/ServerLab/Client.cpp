@@ -25,7 +25,6 @@ constexpr auto BUF_SIZE = MAX_BUFFER;
 #define BOARD_SIZEY 16
 
 // Server 관련
-#define MAX_PLAYER 11
 WSADATA WSAData;
 SOCKET s_socket; // 서버 소켓
 char serverip[32]; //서버아이피
@@ -179,7 +178,7 @@ int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR IpszCmdPa
 	//윈도우 클래스 등록
 	RegisterClassEx(&WndClass);
 	//윈도우 생성
-	hWnd = CreateWindow(lpszClass, "게임서버", WS_OVERLAPPEDWINDOW, 0, 0, 600, 600, NULL, (HMENU)NULL, hinstance, NULL);
+	hWnd = CreateWindow(lpszClass, "게임서버", WS_OVERLAPPEDWINDOW, 0, 0, 600, 623, NULL, (HMENU)NULL, hinstance, NULL);
 
 	//윈도우 출력
 	ShowWindow(hWnd, nCmdShow);
@@ -240,9 +239,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 		{
 			Rectangle(memDC, 0, 0, rectView.right,rectView.bottom);
 			//background.Draw(memDC, 0, 0, rectView.right, rectView.bottom);
-			for (int y = 0; y < 50; y++)
+			for (int x = 0; x < 50; x++)
 			{
-				for (int x = 0; x < 50; x++)
+				for (int y = 0; y < 50; y++)
 				{
 					background.Draw(memDC
 						, rectView.right / 2 * x - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
@@ -259,13 +258,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 				{
 					chess2.Draw(memDC
 						, Players[i].x * dx - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
-						, Players[i].y * dy - myPlayer.y * dy + BOARD_SIZEX / 2 * dy
+						, Players[i].y * dy - myPlayer.y * dy + BOARD_SIZEY / 2 * dy
 						, dx, dy);
 				}
 			}
 
 			if (myPlayer.bEnable) {
-				chess.Draw(memDC, BOARD_SIZEX / 2 * dx, BOARD_SIZEY / 2 * dy, dx, dy);
+				chess.Draw(memDC
+					, BOARD_SIZEX / 2 * dx
+					, BOARD_SIZEY / 2 * dy
+					, dx, dy);
 			}
 
 

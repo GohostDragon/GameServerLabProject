@@ -4,11 +4,14 @@ constexpr int MAX_NAME = 50;
 
 constexpr int MAX_BUFFER = 1024;
 constexpr short SERVER_PORT = 3500;
-constexpr int MAX_USER = 6000;
+constexpr int MAX_USER = 8500;
 
 constexpr int BOARD_WIDTH = 400;
 constexpr int BOARD_HEIGHT = 400;
 constexpr int VIEW_RADIUS = 5;
+
+constexpr int Row = BOARD_WIDTH / (VIEW_RADIUS * 2);
+constexpr int Col = BOARD_HEIGHT / (VIEW_RADIUS * 2);
 
 constexpr unsigned char C2S_PACKET_LOGIN = 1;
 constexpr unsigned char C2S_PACKET_MOVE = 2;
