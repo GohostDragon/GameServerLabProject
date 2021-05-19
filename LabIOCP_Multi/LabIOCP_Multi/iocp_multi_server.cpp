@@ -3,7 +3,7 @@
 #include <thread>
 #include <vector>
 #include <mutex>
-using namespace std;
+#include <unordered_set>
 #include <WS2tcpip.h>
 #include <MSWSock.h>
 
@@ -11,6 +11,7 @@ using namespace std;
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "MSWSock.lib")
+using namespace std;
 
 constexpr int NUM_THREADS = 4;
 
@@ -36,6 +37,8 @@ struct SESSION
 	char	m_name[MAX_NAME];
 	short	m_x, m_y;
 	int		last_move_time;
+	unordered_set <int> m_viewlist;
+	mutex	m_vl;
 };
 
 SESSION players[MAX_USER];
@@ -50,6 +53,14 @@ void display_error(const char* msg, int err_no)
 	cout << msg;
 	wcout << L"에러 " << lpMsgBuf << endl;
 	LocalFree(lpMsgBuf);
+}
+
+bool can_see(int id_a, int id_b)
+{
+	return VIEW_RADIUS * VIEW_RADIUS >= (players[id_a].m_x - players[id_b].m_x)
+		* (players[id_a].m_x - players[id_b].m_x)
+		+ (players[id_a].m_y - players[id_b].m_y)
+		* (players[id_a].m_y - players[id_b].m_y);
 }
 
 void send_packet(int p_id, void *buf)
@@ -101,6 +112,11 @@ void send_pc_login(int c_id, int p_id)
 	packet.y = players[p_id].m_y;
 	strcpy_s(packet.name, players[p_id].m_name);
 	packet.o_type = 0;
+
+	players[c_id].m_vl.lock();
+	players[c_id].m_viewlist.insert(p_id);
+	players[c_id].m_vl.unlock();
+
 	send_packet(c_id, &packet);
 }
 
@@ -110,6 +126,11 @@ void send_pc_logout(int c_id, int p_id)
 	packet.id = p_id;
 	packet.size = sizeof(packet);
 	packet.type = S2C_PACKET_PC_LOGOUT;
+
+	players[c_id].m_vl.lock();
+	players[c_id].m_viewlist.erase(p_id);
+	players[c_id].m_vl.unlock();
+
 	send_packet(c_id, &packet);
 
 }
@@ -130,14 +151,67 @@ void player_move(int p_id, char dir)
 	players[p_id].m_x = x;
 	players[p_id].m_y = y;
 
+	players[p_id].m_vl.lock();
+	unordered_set <int> old_vl = players[p_id].m_viewlist;
+	players[p_id].m_vl.unlock();
+
+	unordered_set <int> new_vi;
 	for (auto& cl : players) {
+		if (p_id == cl.m_id) continue;
 		cl.m_lock.lock();
 		if (STATE_INGAME != cl.m_state) {
 			cl.m_lock.unlock();
 			continue;
 		}
-		send_move_packet(cl.m_id, p_id);
+		if (can_see(p_id, cl.m_id))
+			new_vi.insert(cl.m_id);
 		cl.m_lock.unlock();
+	}
+
+	send_move_packet(p_id, p_id);
+
+	for (auto pl : new_vi) {
+		if (pl == p_id)
+			continue;
+		if (0 == old_vl.count(pl)) {
+			// 1. 새로 시야에 들어오는 플레이어 처리
+			send_pc_login(p_id, pl);
+			players[pl].m_vl.lock();
+			if (0 == players[pl].m_viewlist.count(p_id)) {
+				players[pl].m_vl.unlock();
+				send_pc_login(pl, p_id);
+			}
+			else {
+				players[pl].m_vl.unlock();
+				send_move_packet(pl, p_id);
+			}
+		}
+		else {
+			// 2. 처음 부터 끝까지 시야에 존재하는 플레이어 처리
+			players[pl].m_vl.lock();
+			if (0 == players[pl].m_viewlist.count(p_id)) {
+				players[pl].m_vl.unlock();
+				send_pc_login(pl, p_id);
+			}
+			else {
+				players[pl].m_vl.unlock();
+				send_move_packet(pl, p_id);
+			}
+		}
+	}
+
+	// 3. 시야에서 벗어나는 플레이어 처리
+	for (auto pl : old_vl) {
+		if (0 == new_vi.count(pl)) {
+			send_pc_logout(p_id, pl);
+			players[pl].m_vl.lock();
+			if (0 != players[pl].m_viewlist.count(p_id)) {
+				players[pl].m_vl.unlock();
+				send_pc_logout(pl, p_id);
+			}
+			else
+				players[pl].m_vl.unlock();
+		}
 	}
 }
 
@@ -149,10 +223,8 @@ void process_packet(int p_id, unsigned char* packet)
 	case C2S_PACKET_LOGIN:
 		players[p_id].m_lock.lock();
 		strcpy_s(players[p_id].m_name, p->name);
-		//players[p_id].m_x = rand() % BOARD_WIDTH;
-		//players[p_id].m_y = rand() % BOARD_HEIGHT;
-		players[p_id].m_x = 3;
-		players[p_id].m_y = 3;
+		players[p_id].m_x = rand() % BOARD_WIDTH;
+		players[p_id].m_y = rand() % BOARD_HEIGHT;
 		send_login_info(p_id);
 		players[p_id].m_state = STATE_INGAME;
 		players[p_id].m_lock.unlock();
@@ -164,8 +236,16 @@ void process_packet(int p_id, unsigned char* packet)
 				p.m_lock.unlock();
 				continue;
 			}
-			send_pc_login(p_id, p.m_id);
-			send_pc_login(p.m_id, p_id);
+			if (can_see(p_id, p.m_id)) {
+				players[p_id].m_vl.lock();
+				players[p_id].m_viewlist.insert(p.m_id);
+				players[p_id].m_vl.unlock();
+				send_pc_login(p_id, p.m_id);
+				p.m_vl.lock();
+				p.m_viewlist.insert(p_id);
+				p.m_vl.unlock();
+				send_pc_login(p.m_id, p_id);
+			}
 			p.m_lock.unlock();
 		}
 		break;
@@ -199,6 +279,9 @@ int get_new_player_id()
 		players[i].m_lock.lock();
 		if (STATE_FREE == players[i].m_state) {
 			players[i].m_state = STATE_CONNECTED;
+			players[i].m_vl.lock();
+			players[i].m_viewlist.clear();
+			players[i].m_vl.unlock();
 			players[i].m_lock.unlock();
 			return i;
 		}
