@@ -45,6 +45,7 @@ typedef struct Pos
 	int x = 3;
 	int y = 3;
 	bool bEnable = false;
+	char o_type = 0;
 }Pos;
 KeyInputs C_data; // 서버로 보낼 데이터
 Pos S_data; // 서버에서 받을 데이터
@@ -144,8 +145,6 @@ DWORD WINAPI RecvSendMsg(LPVOID arg)
 		DWORD bytes_recv;
 		DWORD r_flag = 0;
 		auto recv_result = WSARecv(s_socket, r_wsabuf, 1, &bytes_recv, &r_flag, 0, 0);
-		//Players[S_data.id] = S_data;
-		//cout << "ServerSent [" << S_data.id << "] : " << S_data.x << ", " << S_data.y << "  isplayerd: " << S_data.isplayer << endl;
 
 		if (bytes_recv > 0) process_data(net_buf, bytes_recv);
 
@@ -203,7 +202,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 	PAINTSTRUCT ps;
 	static CImage background; //보드맵
 	static CImage chess; //플레이어
-	static CImage chess2; //플레이어
 
 	static RECT rectView; //클라이언트 창 크기
 	static HDC hDC,memDC;
@@ -221,8 +219,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 		dx = (float)rectView.right / BOARD_SIZEX, dy = (float)rectView.bottom / BOARD_SIZEY;
 
 		background.Load("img\\chessboard.jpg");
-		chess.Load("img\\pngegg.png");
-		chess2.Load("img\\pngegg2.png");
+		chess.Load("img\\chess.png");
 		return 0;
 	}
 	case WM_PAINT:
@@ -239,9 +236,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 		{
 			Rectangle(memDC, 0, 0, rectView.right,rectView.bottom);
 			//background.Draw(memDC, 0, 0, rectView.right, rectView.bottom);
-			for (int x = 0; x < 50; x++)
+			for (int x = 0; x < 250; x++)
 			{
-				for (int y = 0; y < 50; y++)
+				for (int y = 0; y < 250; y++)
 				{
 					background.Draw(memDC
 						, rectView.right / 2 * x - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
@@ -256,10 +253,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 			{
 				if (Players[i].bEnable)
 				{
-					chess2.Draw(memDC
-						, Players[i].x * dx - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
-						, Players[i].y * dy - myPlayer.y * dy + BOARD_SIZEY / 2 * dy
-						, dx, dy);
+					if (Players[i].o_type == 0)
+					{
+						chess.Draw(memDC
+							, Players[i].x * dx - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
+							, Players[i].y * dy - myPlayer.y * dy + BOARD_SIZEY / 2 * dy
+							, dx , dy
+							, 132 * 3, 132
+							, 132, 132);
+						//chess2.Draw(memDC
+						//	, Players[i].x * dx - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
+						//	, Players[i].y * dy - myPlayer.y * dy + BOARD_SIZEY / 2 * dy
+						//	, dx, dy);
+					}
+					else if (Players[i].o_type == 1) {
+						chess.Draw(memDC
+							, Players[i].x * dx - myPlayer.x * dx + BOARD_SIZEX / 2 * dx
+							, Players[i].y * dy - myPlayer.y * dy + BOARD_SIZEY / 2 * dy
+							, dx , dy
+							, 0, 132
+							, 132, 132);
+					}
 				}
 			}
 
@@ -267,7 +281,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM IParam)
 				chess.Draw(memDC
 					, BOARD_SIZEX / 2 * dx
 					, BOARD_SIZEY / 2 * dy
-					, dx, dy);
+					, dx , dy
+					, 132 * 3, 0
+					, 132, 132);
+
+				//chess.Draw(memDC
+				//	, BOARD_SIZEX / 2 * dx
+				//	, BOARD_SIZEY / 2 * dy
+				//	, dx, dy);
 			}
 
 
@@ -381,6 +402,7 @@ void ProcessPacket(char* ptr)
 		if (id < MAX_USER) {
 			Players[id].x = my_packet->x;
 			Players[id].y = my_packet->y;
+			Players[id].o_type = my_packet->o_type;
 			Players[id].bEnable = true;
 		}
 		else {
