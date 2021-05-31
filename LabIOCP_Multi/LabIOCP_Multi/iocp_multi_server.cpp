@@ -89,6 +89,7 @@ int add_event(int id, OP_TYPE ev, int delay_ms)
 	timer_lock.lock();
 	timer_queue.push(event);
 	timer_lock.unlock();
+	return 0;
 }
 
 bool is_npc(int id)
@@ -663,11 +664,21 @@ void do_timer()
 			timer_lock.unlock();
 			switch (ev.event_type) {
 			case OP_RANDOM_MOVE:
-				EX_OVER* ex_over = new EX_OVER;
-				ex_over->m_op = OP_RANDOM_MOVE;
-				PostQueuedCompletionStatus(h_iocp, 1, ev.object_id, &ex_over->m_over);
-				//do_random_move_npc(ev.object_id);
-				//add_event(ev.object_id, OP_RANDOM_MOVE, 1000);
+				//EX_OVER* ex_over = new EX_OVER;
+				//ex_over->m_op = OP_RANDOM_MOVE;
+				//PostQueuedCompletionStatus(h_iocp, 1, ev.object_id, &ex_over->m_over);
+
+				bool ai_on = false;
+				for (int pl = 0; pl < NPC_START; ++pl) {
+					if (players[pl].m_state != STATE_INGAME) continue;
+					if (can_see(ev.object_id, pl)) {
+						ai_on = true;
+						break;
+					}
+				}
+				if (true == ai_on)
+					do_random_move_npc(ev.object_id);
+				add_event(ev.object_id, OP_RANDOM_MOVE, 1000);
 				break;
 			}
 		}
